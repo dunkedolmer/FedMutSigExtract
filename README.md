@@ -1,4 +1,4 @@
-# P10 Federated Learning
+# FedMutSigExtract
 Insert project description here.
 
 # Installation
