@@ -1,0 +1,30 @@
+# Python bytecode cache directories and VS code settings
+__pycache__/
+*.pyc
+.vscode
+.csv
+
+# Dependencies etc.
+venv
+
+# Ignore synthetic datasets
+data/external/sample8
+data/external/.cosmic
+
+# Trained models
+models_trained/*
+
+# Output results produced from /src
+output/*
+
+# Results generated from /src for centralized learning and federated learning
+results/
+
+src/centralized/datasets/*
+
+# Genereated analysis as PDF, LaTeX, etc.
+reports/*
+!reports/*.gitkeep
+
+# Whatever projects or files we use locally but should not be pushed
+/local
