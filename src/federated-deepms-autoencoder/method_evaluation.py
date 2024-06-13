@@ -27,16 +27,11 @@ class MethodEvaluator:
             self.data_path + "/COSMIC_v3.3.1_SBS_GRCh37.txt"
         ) or not os.path.exists(self.data_path + "/COSMIC_v3.3.1_SBS_GRCh38.txt"):
             print("Downloading COSMIC data...")
-            urlretrieve(
-                URL_COSMIC_SIGNATURES_GRCh37,
-                self.data_path + "/COSMIC_v3.3.1_SBS_GRCh37.txt",
-            )
-            urlretrieve(
-                URL_COSMIC_SIGNATURES_GRCh38,
-                self.data_path + "/COSMIC_v3.3.1_SBS_GRCh38.txt",
-            )
-            print("Done")
+            urlretrieve(URL_COSMIC_SIGNATURES_GRCh37, self.data_path + "/COSMIC_v3.3.1_SBS_GRCh37.txt")
+            urlretrieve(URL_COSMIC_SIGNATURES_GRCh38, self.data_path + "/COSMIC_v3.3.1_SBS_GRCh38.txt")
+            print("Successfully retrieved COSMIC signature documents!")
 
+        # Load COSMIC data into DataFrames
         GRCh37 = pd.read_table(
             self.data_path + "/COSMIC_v3.3.1_SBS_GRCh37.txt", index_col=0
         )
@@ -60,6 +55,8 @@ class MethodEvaluator:
         signatures = signatures.to_numpy()
         knownSignatures = knownSignatures.to_numpy()
         cosMatrix = np.zeros((signatures.shape[1], knownSignatures.shape[1]))
+        
+        # Calculate cosine similarity between extracted signatures and known signatures 
         for i in range(signatures.shape[1]):
             for j in range(knownSignatures.shape[1]):
                 cosMatrix[i, j] = self._cosineSimilarity(
@@ -77,7 +74,7 @@ class MethodEvaluator:
             signatures, knownSignatures
         )
 
-        # count how many rows have a collum over 0.8 and 0.95
+        # Count how many rows have a collum over 0.8 and 0.95
         numCos80 = np.sum(np.sum(self.cosineSimilarityMatrix >= 0.8, axis=1) >= 1)
         numCos95 = np.sum(np.sum(self.cosineSimilarityMatrix >= 0.95, axis=1) >= 1)
 
@@ -111,7 +108,6 @@ class MethodEvaluator:
         # normalize weights
         weights = weights.div(weights.sum(axis=1), axis=0).to_numpy()
         knownWeights = knownWeights.div(knownWeights.sum(axis=1), axis=0).to_numpy()
-        print(f"weights shape: {weights.shape}, knownWeights shape: {knownWeights.shape}")
         
         # compare (mse, mae, rmse) weights with known weights, given the index
         mse = []
@@ -138,20 +134,6 @@ class MethodEvaluator:
             rmse.append(np.sqrt(mse[-1]))
 
         return np.average(mse), np.average(mae), np.average(rmse)
-
-        mse = (
-            (
-                weights[self.hungarian_row_ind, :]
-                - knownWeights[self.hungarian_col_ind, :]
-            )
-            ** 2
-        ).mean()
-        mae = np.abs(
-            weights[self.hungarian_row_ind, :] - knownWeights[self.hungarian_col_ind, :]
-        ).mean()
-        rmse = np.sqrt(mse)
-
-        return mse, mae, rmse
 
     def COSMICevaluate(
         self,
@@ -227,8 +209,6 @@ class MethodEvaluator:
                 knownWeights = pd.read_csv(knownWeights, sep="\t", index_col=0)
             else:
                 knownWeights = pd.read_csv(knownWeights, index_col=0)
-                print(f"Reading weights (.csv)...")
-                print(f"knownWeights shape: ({knownWeights.shape})")
 
         # Signatures found by the method
         numFoundSig = signatures.shape[1]
@@ -236,7 +216,6 @@ class MethodEvaluator:
         if weights.shape[0] != numFoundSig:
             weights = weights.T
 
-        print(f"weights.shape[1]: {weights.shape[1]}, knownWeights.shape[1]: {knownWeights.shape[1]}")
         assert weights.shape[1] == knownWeights.shape[1]
 
         # Known signatures found by the method
