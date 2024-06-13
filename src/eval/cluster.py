@@ -140,7 +140,7 @@ class mk_cluster(k_cluster):
             return float('nan')  # Return NaN to indicate an error in reading the file
 
     def _process_iterations(self, method):
-        self.base_dir = f"src/federated-nmf/fedNMF_datasets/{method}"
+        self.base_dir = pathmanager.src() + f"/federated-nmf/fedNMF_datasets/{method}"
         self.components_range = range(2, 11) #Set to coponent range in the federated data
         self.prelim_signatures = []
         self.avg_loss = []
