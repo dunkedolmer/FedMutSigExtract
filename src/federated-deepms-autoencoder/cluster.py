@@ -87,7 +87,6 @@ class k_cluster:
         signatures = pd.DataFrame(self.signatures, columns=self.df.index).T
         signatures.columns = [f"Sig{i}" for i in range(1, signatures.shape[1] + 1)]
         signatures.to_csv(self.output_path + "/signatures.tsv", sep="\t")
-        print(f"{self.output_path}/signatures.tsv")
         
         # find exposures
         Analyzer.cosmic_fit(
@@ -230,7 +229,6 @@ class ak_cluster(k_cluster):
                 self.latents,
                 self.model # Pass in the current model
             )
-            print(f"AE loss: {l}")
             self.prelim_signatures.append(W.T)
             self.H_iterations.append(H)
             self.avg_loss.append(l)
@@ -256,9 +254,6 @@ class ak_cluster(k_cluster):
             cluster_centroids.append(c_cluster_centroids)
             silhouette_scores.append(c_silhouette_scores)
             inertia_scores.append(c_inertia_scores)
-            # print(f"c_cluster_centroids: ", c_cluster_centroids)
-            # print(f"c_silhouette_scores: ", c_silhouette_scores)
-            # print(f"c_inertia_scores: ", c_inertia_scores)       
 
         cluster_components = []
         for i, centroids in enumerate(cluster_centroids):
@@ -295,8 +290,6 @@ class ak_cluster(k_cluster):
     def get_model_parameters(self):
         '''Retrieves the parameters of the trained model'''
         return self.model.state_dict()
-        
-
 
 if __name__ == "__main__":
     from sklearn.decomposition import NMF

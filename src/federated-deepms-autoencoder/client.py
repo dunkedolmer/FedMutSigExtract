@@ -19,12 +19,22 @@ from pathmanager import PathManager
 pathmanager: PathManager = PathManager() 
 evaluator = MethodEvaluator()
 
-current_file_path = os.path.dirname(__file__) + "/.." + "/.."
-parent_folder = os.path.dirname(__file__) + "/.."
+# Path variables
+CURRENT_FILE_PATH = os.path.dirname(__file__) + "/.." + "/.."
+PARENT_FOLDER = os.path.dirname(__file__) + "/.."
 
 DEVICE = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
 def prepare_data(df: pd.DataFrame):
+    """
+    Prepares the training and testing datasets with optional noise addition.
+    
+    Args:
+        df (pd.DataFrame): Input data (mutational catalog)
+
+    Returns:
+        tuple: Normalized training and testing data, both original and noisy versions.
+    """
     test_set_percent = 0.1
     noise_factor = 0.0
     df = df.div(df.sum(axis=1), axis=0)
@@ -47,7 +57,16 @@ def prepare_data(df: pd.DataFrame):
     return x_train, x_train_noisy, x_test, x_test_noisy
 
 def load_data(x_train, x_train_noisy, x_test, x_test_noisy, batch_size=32):
-    # TODO: Min/max scaling
+    """
+    Loads data into DataLoader objects for training and testing.
+
+    Args:
+        x_train, x_train_noisy, x_test, x_test_noisy (pd.DataFrame): Input datasets.
+        batch_size (int): Batch size for the DataLoader.
+
+    Returns:
+        tuple: DataLoader objects for training and testing datasets.
+    """
     
     # Convert Pandas DataFrames to NumPy arrays
     x_train = x_train.values
@@ -71,8 +90,17 @@ def load_data(x_train, x_train_noisy, x_test, x_test_noisy, batch_size=32):
 
     return train_loader, test_loader
 
-# Create dataset from pandas dataframe
 class Dataset(torch.utils.data.Dataset):
+    """
+    Custom Dataset class for PyTorch.
+
+    Args:
+        df1, df2 (pd.DataFrame): Input datasets.
+
+    Methods:
+        __len__(): Returns the length of the dataset.
+        __getitem__(idx): Returns the items at the given index.
+    """
     def __init__(self, df1, df2):
         self.x1 = torch.tensor(df1.values, dtype=torch.float32)
         self.x2 = torch.tensor(df2.values, dtype=torch.float32)
@@ -83,51 +111,6 @@ class Dataset(torch.utils.data.Dataset):
     def __getitem__(self, idx):
         return self.x1[idx], self.x2[idx]
 
-def train(model, trainloader, testloader, epochs, criterion):
-    optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
-
-    total_train_loss = []
-    total_test_loss = []    
-    for _ in range(epochs):
-        train_losses = []
-        for input_data, target_data in trainloader:
-            input_data = input_data.to(DEVICE)
-            target_data = target_data.to(DEVICE)
-            optimizer.zero_grad()
-            reconstructed_output = model(input_data)
-            loss = criterion(reconstructed_output, target_data)
-            loss.backward()
-            optimizer.step()
-            train_losses.append(loss.item())
-
-        total_train_loss.append(np.mean(train_losses))
-        
-        if __name__ == "__main__":
-            with torch.no_grad():
-                test_losses = []
-                for x_n, x_o in testloader:
-                    x_n = x_n.to(DEVICE)
-                    x_o = x_o.to(DEVICE)
-                    test_output = model(x_n)
-                    test_loss = criterion(test_output, x_o)
-                    test_losses.append(test_loss.item())
-            total_test_loss.append(np.mean(test_losses))
-    if __name__ == "__main__":
-        import matplotlib.pyplot as plt
-
-        plt.plot(total_train_loss, label="Training loss")
-        plt.plot(total_test_loss, label="Testing loss")
-        plt.legend(frameon=False)
-        plt.show()
-
-    plt.plot(total_train_loss, label="Training loss")
-    plt.plot(total_test_loss, label="Testing loss")
-    plt.legend(frameon=False)
-    plt.show()
-
-    return total_train_loss[-1]
-
-
 def train_model(
     epochs: int,
     model: nn.Module,
@@ -136,6 +119,19 @@ def train_model(
     train_loader: torch.utils.data.DataLoader,
     test_loader: torch.utils.data.DataLoader,
 ):
+    """
+    Trains the model for the specified number of epochs.
+
+    Args:
+        epochs (int): Number of epochs to train.
+        model (nn.Module): Model to train.
+        optimizer (torch.optim.Optimizer): Optimizer.
+        criterion (nn.Module): Loss function.
+        train_loader, test_loader (torch.utils.data.DataLoader): DataLoader objects for training and testing.
+
+    Returns:
+        float: Final training loss.
+    """
     total_train_loss = []
     total_test_loss = []
     for _ in range(epochs):
@@ -178,9 +174,24 @@ def train_model(
     return total_train_loss[-1]
 
 def _AE(df: pd.DataFrame, components: int = 200, criterion=nn.KLDivLoss(), model=None):
+    """
+    Trains an autoencoder on the given dataset.
+
+    Args:
+        df (pd.DataFrame): Input data.
+        components (int): Number of components for the autoencoder.
+        criterion (nn.Module): Loss function.
+        model (nn.Module): Predefined model, if any.
+
+    Returns:
+        tuple: Latent representations, model weights, final loss, and trained model.
+    """
+    
+    # Hyperparameters
     batch_size = 8
     epochs = 500
     learning_rate = 1e-3
+    
     original_dim = df.shape[1]
 
     x_train, x_train_noisy, x_test, x_test_noisy = prepare_data(df)
@@ -194,7 +205,7 @@ def _AE(df: pd.DataFrame, components: int = 200, criterion=nn.KLDivLoss(), model
         test_dataset, batch_size=batch_size, shuffle=False
     )
 
-    # Check if we are passed an existing model
+    # Check if we are passing an existing model
     if model is None:
         model = DeepMSAutoencoder(original_dim, components).to(DEVICE)
     
@@ -202,7 +213,6 @@ def _AE(df: pd.DataFrame, components: int = 200, criterion=nn.KLDivLoss(), model
 
     loss = train_model(epochs, model, optimizer, criterion, train_loader, test_loader)
     
-    # get all latents
     latents = (
         model.encode(torch.tensor(df.values, dtype=torch.float32).to(DEVICE))
         .cpu()
@@ -210,7 +220,6 @@ def _AE(df: pd.DataFrame, components: int = 200, criterion=nn.KLDivLoss(), model
         .numpy()
     )
 
-    # get all weights
     weights = (
         [x.weight.data for i, x in enumerate(model.encoder.modules()) if i == 1][0]
         .cpu()
@@ -221,7 +230,7 @@ def _AE(df: pd.DataFrame, components: int = 200, criterion=nn.KLDivLoss(), model
     return latents, weights, loss, model
 
 def mseAE(df: pd.DataFrame, components: int = 200, modFel=None):
-    return _AE(df, components, nn.MSELoss(), model)
+    return _AE(model, df, components, nn.MSELoss())
 
 
 def klAE(df: pd.DataFrame, components: int = 200, model=None):
@@ -230,24 +239,24 @@ def klAE(df: pd.DataFrame, components: int = 200, model=None):
 def save_output(method) -> None:
     '''Saves the output of a method based on a dataset in the results directory'''
     # Save output in results folder
-    result_folder = f"{current_file_path}/results/federated/{method}"
+    result_folder = f"{CURRENT_FILE_PATH}/results/federated/{method}"
     # if not os.path.exists(pathmanager.results_centralized() + f"/{method}"):
     if not os.path.exists(result_folder):
         os.makedirs(result_folder)
         print(f"Made the directory: {result_folder}")
 
     shutil.copy(
-        parent_folder + "/datasets/nmf_output/aux_loss.png",
+        PARENT_FOLDER + "/datasets/nmf_output/aux_loss.png",
         f"{result_folder}/aux_loss.png"
         # dataset["folder"] + f"/results/{method}/aux_loss.png",
     )
     shutil.copy(
-        parent_folder + "/datasets//nmf_output/signatures.tsv",
+        PARENT_FOLDER + "/datasets//nmf_output/signatures.tsv",
         f"{result_folder}/signatures.tsv"
         # dataset["folder"] + f"/results/{method}/signatures.tsv",
     )
     shutil.copy(
-        parent_folder
+        PARENT_FOLDER
         + "/datasets/nmf_output/output_weights/Assignment_Solution/Activities/Assignment_Solution_Activities.txt",
         f"{result_folder}/weights.txt"
         # dataset["folder"] + f"/results/{method}/weights.txt",
@@ -256,17 +265,17 @@ def save_output(method) -> None:
 def evaluate_synthetic(partition):
     print(f"Received args.partition: {partition}")
     result = evaluator.evaluate(
-        parent_folder + "/datasets/nmf_output/signatures.tsv",
-        parent_folder + "/datasets/nmf_output/output_weights/Assignment_Solution/Activities/Assignment_Solution_Activities.txt",
-        current_file_path + "/data" + "/external" + "/sample8" + "/sigMatrix.csv",
-        current_file_path + "/data" + "/external" + "/sample8" + "/weights" + f"/weights_{partition}.csv")
+        PARENT_FOLDER + "/datasets/nmf_output/signatures.tsv",
+        PARENT_FOLDER + "/datasets/nmf_output/output_weights/Assignment_Solution/Activities/Assignment_Solution_Activities.txt",
+        CURRENT_FILE_PATH + "/data" + "/external" + "/sample8" + "/sigMatrix.csv",
+        CURRENT_FILE_PATH + "/data" + "/external" + "/sample8" + "/weights" + f"/weights_{partition}.csv")
         
     return result
 
 def evaluate_wgs(partition):
     print(f"Received args.partition: {partition}")
     return evaluator.COSMICevaluate(
-            parent_folder + "/datasets/nmf_output/signatures.tsv",
+            PARENT_FOLDER + "/datasets/nmf_output/signatures.tsv",
             "GRCh37",
         )
 
@@ -296,40 +305,29 @@ def save_results(results, methods):
 
 def main():
     # Parser setup for choosing partition to run AE on
-    parser = argparse.ArgumentParser(description='FedNMFClient')
+    parser = argparse.ArgumentParser(description='FedAEClient')
     parser.add_argument('partition', choices=['1', '2', '3'], help='Choose a partition')
     args = parser.parse_args()
-    file = f"file_{args.partition}.txt"
+    file = f"file_{args.partition}.txt" # -> Integer representing the partition (used to differentiate between partitions)
     
     # Prepare file path for dataset
+    # Synthetic dataset
     code_dir = os.path.abspath(os.path.dirname(__file__))
     # data_dir = os.path.abspath(os.path.join(code_dir, '..', '..', 'data', 'external', 'sample8', 'uneven'))
     # file_path = os.path.join(data_dir, file)
+    # weights_file = CURRENT_FILE_PATH + "/data" + "/external" + "/sample8" + "/weights" + f"/weights_{args.partition}.csv"
+    
+    # WGS PCAWG dataset
     wgs_path = os.path.abspath(os.path.join(code_dir, '..', '..', 'data', 'external', 'wgs', 'data'))
     wgs_file = f"file_{args.partition}.txt"
     wgs_dataset_path = os.path.join(wgs_path, wgs_file)
-    print(f"Succesfully read file: {wgs_dataset_path}")
-    # weights_file = current_file_path + "/data" + "/external" + "/sample8" + "/weights" + f"/weights_{args.partition}.csv"
 
     
     # Read dataset from file
-    # print(f"file_path: {file_path}")
     # df = pd.read_csv(file_path, sep='\t', index_col=0, header=None, skiprows=[0]) # Shape: (96,167)
-    # print(f"df.shape: {df.shape}")
     df_wgs = pd.read_csv(wgs_dataset_path, sep='\t', index_col=0, header=None, skiprows=[0]) # Shape: (96,2781)
-    print(f"df_wgs.shape: {df_wgs.shape}")
-    print(df_wgs.iloc[:,0])
-    # model = DeepMSAutoencoder(df.shape[0], df.shape[1])
-    # model = model.to(DEVICE)
-    # task = ak_cluster(file_path, mseAE, latents=200)
 
-    # Autoencoder setup
-    # Hyperparameters
-    batch_size = 8
-    epochs = 100 # used to be 500
-    learning_rate = 1e-3
-    components = 200
-
+    # Prepare data
     # x_train, x_train_noisy, x_test, x_test_noisy = prepare_data(df_wgs)
     # trainloader, testloader = load_data(x_train, x_train_noisy, x_test, x_test_noisy)
     # train_dataset = Dataset(x_train_noisy, x_train)
@@ -340,12 +338,11 @@ def main():
     # test_loader = torch.utils.data.DataLoader(
     #     test_dataset, batch_size=batch_size, shuffle=False
     # )
-    model = DeepMSAutoencoder(df_wgs.shape[1], components).to(DEVICE)
+    model = DeepMSAutoencoder(df_wgs.shape[1], 200).to(DEVICE)
 
     class FedDeepMSClient(fl.client.NumPyClient):
-        def __init__(self, dataset: pd.DataFrame):
+        def __init__(self):
             self.round = 1 # Initial round 
-            # self.model = DeepMSAutoencoder(dataset.shape[1], 200).to(DEVICE)
             self.latents = []
             self.weights = []
             self.loss = float(0.0) # Initial loss    
@@ -371,9 +368,11 @@ def main():
 
         def _load_state_dict_with_mismatch(self, model, state_dict):
             model_dict = model.state_dict()
+            
             # Filter out unnecessary keys and mismatched shapes
             state_dict = {k: v for k, v in state_dict.items() if k in model_dict and model_dict[k].shape == v.shape}
-            # Update the existing state dict
+            
+            # Update the existing state dictionary
             model_dict.update(state_dict)
             model.load_state_dict(model_dict)
             
@@ -386,11 +385,9 @@ def main():
             
         def extract_mutational_signatures(self):
             print("Extracting mutational signatures ...")
-            execution_times = [] # Store the execution time of each method (for experiments)
             
             if (self.t_start == None):
                 self.t_start = time.time()
-                print(f"Started execution time!")
             task = ak_cluster(model, wgs_dataset_path, klAE, 10, 200)
             task.run()
             
@@ -406,8 +403,8 @@ def main():
                 print(f"Method AE_kl took {t_total:.2f} seconds")
             
             save_output("AE_ak_mse")
-            # result = evaluate_synthetic(args.partition)
-            result = evaluate_wgs(args.partition)
+            # result = evaluate_synthetic(args.partition) # Evaluate the results from extracting from Synth5 dataset
+            result = evaluate_wgs(args.partition) # Evaluate the results from extracting from WGS PCAWG dataset
             print(f"Results: {result}")
                     
         def evaluate(self, parameters, config):
