@@ -108,6 +108,88 @@ class k_cluster:
 
 
 class mk_cluster(k_cluster):
+    def fedRun(self, method):
+        print(method)
+        print("Running method_cluster")
+        self._process_iterations(method)
+        print("Finding signatures")
+        self._cluster_signatures()
+        print(f"Found {len(self.signatures)} signatures")
+        print("Finding exposures")
+        self._find_exposures()
+
+
+    def _read_matrix(self, filepath):
+        try:
+            matrix = np.loadtxt(filepath)
+            return matrix
+        except Exception as e:
+            print(f"Error reading matrix file {filepath}: {e}")
+            return None
+    
+    def _read_loss(self, filepath):
+        try:
+            with open(filepath, 'r') as file:
+                content = file.readline().strip()
+                if content:
+                    loss_value = float(content)
+                    return loss_value
+                else:
+                    raise ValueError(f"File {filepath} is empty or contains invalid data.")
+        except Exception as e:
+            print(f"Error reading loss file {filepath}: {e}")
+            return float('nan')  # Return NaN to indicate an error in reading the file
+
+    def _process_iterations(self, method):
+        self.base_dir = f"src/federated-nmf/fedNMF_datasets/{method}"
+        print(self.base_dir)
+        self.components_range = range(2, 11) #Set to coponent range in the federated data
+        self.prelim_signatures = []
+        self.avg_loss = []
+        W_iterations = []
+        losses = []
+
+        for component in self.components_range:
+            #print(f"\nProcessing component: {component}")
+            W_concat = []
+            loss_values = []
+            component_dir = os.path.join(self.base_dir, f"{component}_components")
+
+            w_matrix_dir = os.path.join(component_dir, "W_matrix")
+            loss_dir = os.path.join(component_dir, "loss")
+
+            for i in range(2, 11):  # Assuming 9 files in each directory
+                w_matrix_file = os.path.join(w_matrix_dir, f"W_matrix{i}.txt")
+                loss_file = os.path.join(loss_dir, f"Loss{i}.txt")
+
+                W = self._read_matrix(w_matrix_file)
+                l = self._read_loss(loss_file)
+
+                if W is not None:
+                    W_concat.append(W)
+                if not np.isnan(l):
+                    loss_values.append(l)
+            
+            if W_concat:
+                W_iterations.append(np.stack(W_concat))
+            else:
+                print(f"No valid W matrices for component {component}")
+
+            if loss_values:
+                losses.append(loss_values)
+            else:
+                print(f"No valid loss values for component {component}")
+
+        if W_iterations:
+            self.prelim_signatures = [np.hstack(x).T for x in W_iterations]
+        else:
+            self.prelim_signatures = []
+
+        if losses:
+            self.avg_loss = [np.nanmean(x) for x in losses]  # Use nanmean to ignore NaN values
+        else:
+            self.avg_loss = []
+
     def _cluster_signatures(self):
         silhouette_scores = []
         cluster_centroids = []

@@ -10,7 +10,7 @@ class PathManager:
     """
     def __init__(self):
         script_dir = os.path.dirname(os.path.realpath(__file__))
-        self.root_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '..')) # Returns "\p10-federated-learning"
+        self.root_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..')) # Returns "\p10-federated-learning"
 
     # Project path
     def root(self):
