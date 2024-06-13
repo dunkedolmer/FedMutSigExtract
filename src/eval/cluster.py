@@ -109,7 +109,6 @@ class k_cluster:
 
 class mk_cluster(k_cluster):
     def fedRun(self, method):
-        print(method)
         print("Running method_cluster")
         self._process_iterations(method)
         print("Finding signatures")
@@ -142,7 +141,6 @@ class mk_cluster(k_cluster):
 
     def _process_iterations(self, method):
         self.base_dir = f"src/federated-nmf/fedNMF_datasets/{method}"
-        print(self.base_dir)
         self.components_range = range(2, 11) #Set to coponent range in the federated data
         self.prelim_signatures = []
         self.avg_loss = []
