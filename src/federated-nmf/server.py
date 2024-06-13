@@ -1,4 +1,3 @@
-# server.py
 import flwr as fl
 import numpy as np
 import os
@@ -34,7 +33,6 @@ class NMFStrategy(fl.server.strategy.FedAvg):
 
         print(f"Length (results): {len(results)}")
         
-        # Get and translate matrices
         for _, fit_res in results:
             parameters = fit_res.parameters
             if parameters:
@@ -51,7 +49,7 @@ class NMFStrategy(fl.server.strategy.FedAvg):
         self.W_global = W_avg # Store the aggregated result
         self.W_global_cut = W_avg[:5]
 
-        # Convert to Flower output    
+        # Convert        
         W_avg_buffer = io.BytesIO()
         np.save(W_avg_buffer, W_avg)
         W_avg_bytes = W_avg_buffer.getvalue()
@@ -68,11 +66,11 @@ strategy = NMFStrategy(
 #    min_available_clients=2,
 )
 
-myStrategy = fl.server.strategy.FedAvg() 
+myStrategy = fl.server.strategy.FedAvg(min_available_clients=3, min_fit_clients=3, min_evaluate_clients=3) 
 
 fl.server.start_server(
     server_address="127.0.0.1:8080",
-    config=fl.server.ServerConfig(num_rounds=2),
+    config=fl.server.ServerConfig(num_rounds=4),
     strategy=myStrategy,
     
 )
