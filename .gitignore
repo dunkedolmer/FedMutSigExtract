@@ -8,7 +8,6 @@ __pycache__/
 venv
 
 # Ignore synthetic datasets
-data/external/sample8
 data/external/.cosmic
 
 # Trained models
