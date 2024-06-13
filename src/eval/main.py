@@ -95,7 +95,7 @@ def evaluate(dataset: dict):
             "GRCh37",
         )
     else:
-        print(f"dataset[signature]: {dataset["signature"]}, dataset[weights]: {dataset['weights']}")
+        #print(f"dataset[signature]: {dataset["signature"]}, dataset[weights]: {dataset['weights']}")
         return evaluator.evaluate(
             pathmanager.output() + "/nmf_output/signatures.tsv",
             pathmanager.output()
@@ -177,7 +177,14 @@ def test_dataset(dataset, methods):
         print(f"Testing {dataset['folder'].split('/')[-1]} with {method}")
         if method == "nmf_mk_mse":
             mk_cluster(dataset["folder"] + "/" + dataset["dataset"], nmf).run()
-            print("after first clustering")
+        elif method == "fed_nmf_kl_even_3":
+            mk_cluster(dataset["folder"] + "/" + dataset["dataset"], nmf).fedRun(method)
+        elif method == "fed_nmf_mse_even_3":
+            mk_cluster(dataset["folder"] + "/" + dataset["dataset"], nmf).fedRun(method)
+        elif method == "fed_nmf_kl_202060_3":
+            mk_cluster(dataset["folder"] + "/" + dataset["dataset"], nmf).fedRun(method)
+        elif method == "fed_nmf_mse_202060_3":
+            mk_cluster(dataset["folder"] + "/" + dataset["dataset"], nmf).fedRun(method)
         elif method == "nmf_mk_kl":
             mk_cluster(dataset["folder"] + "/" + dataset["dataset"], klnmf).run()
         elif method == "AE_ak_mse":
@@ -202,7 +209,7 @@ def test_dataset(dataset, methods):
 if __name__ == "__main__":
     datasets = find_datasets(pathmanager.data_external())
     
-    methods = ["AE_ak_mse", "AE_ak_kl"] # TODO: Create variable or function to retrieve method strings
+    methods = ["fed_nmf_kl_even_3", "fed_nmf_kl_202060_3"] # TODO: Create variable or function to retrieve method strings
     for dataset in datasets:
         test_dataset(dataset, methods)
 

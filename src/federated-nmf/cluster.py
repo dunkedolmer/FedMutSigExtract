@@ -16,10 +16,6 @@ warnings.filterwarnings("ignore", category=FutureWarning)
 # ignore NMF convergence warning
 warnings.filterwarnings("ignore", category=ConvergenceWarning)
 
-sys.path.append(os.path.dirname(__file__) + "/../tools")
-from pathmanager import PathManager
-
-pathmanager: PathManager = PathManager() 
 
 class k_cluster:
     def __init__(
@@ -45,8 +41,7 @@ class k_cluster:
         assert method != None, "method must be a function"
         assert callable(method), "method must be a function"
         self.method = method
-        #Path to folder for the NMF output
-        self.output_path = pathmanager.output_nmf_output()
+        self.output_path = os.path.dirname(__file__) + "/../datasets/nmf_output"
         if not os.path.exists(self.output_path):
             os.makedirs(self.output_path)
 
@@ -91,7 +86,7 @@ class k_cluster:
         signatures = pd.DataFrame(self.signatures, columns=self.df.index).T
         signatures.columns = [f"Sig{i}" for i in range(1, signatures.shape[1] + 1)]
         signatures.to_csv(self.output_path + "/signatures.tsv", sep="\t")
-
+    
         # find exposures
         Analyzer.cosmic_fit(
             samples=self.dataset,
@@ -108,16 +103,32 @@ class k_cluster:
 
 
 class mk_cluster(k_cluster):
-    def fedRun(self, method):
-        print("Running method_cluster")
-        self._process_iterations(method)
-        print("Finding signatures")
-        self._cluster_signatures()
-        print(f"Found {len(self.signatures)} signatures")
-        print("Finding exposures")
-        self._find_exposures()
+    def _cluster_signatures(self):
+        silhouette_scores = []
+        cluster_centroids = []
 
+        for i, num_c in enumerate(self.components):
+            km = KMeans(n_clusters=num_c).fit(self.prelim_signatures[i])
+            cluster_centroids.append(km.cluster_centers_)
+            silhouette_scores.append(
+                [num_c, silhouette_score(self.prelim_signatures[i], km.labels_)]
+            )
 
+        silhouette_alone = [i[1] for i in silhouette_scores]
+        silhouette_hat = (
+            np.array(silhouette_alone) - np.mean(silhouette_alone)
+        ) / np.std(silhouette_alone)
+        loss_hat = (self.avg_loss - np.mean(self.avg_loss)) / np.std(self.avg_loss)
+        aux_loss = loss_hat - 1 * silhouette_hat
+
+        self.signatures = cluster_centroids[np.argmin(aux_loss)]
+
+        self._plot_aux_loss(
+            self.components,
+            aux_loss,
+            "Number of components",
+            "Auxiliary loss",
+        )
     def _read_matrix(self, filepath):
         try:
             matrix = np.loadtxt(filepath)
@@ -132,6 +143,7 @@ class mk_cluster(k_cluster):
                 content = file.readline().strip()
                 if content:
                     loss_value = float(content)
+                    print(f"Loss value read from {filepath}: {loss_value}")
                     return loss_value
                 else:
                     raise ValueError(f"File {filepath} is empty or contains invalid data.")
@@ -139,9 +151,9 @@ class mk_cluster(k_cluster):
             print(f"Error reading loss file {filepath}: {e}")
             return float('nan')  # Return NaN to indicate an error in reading the file
 
-    def _process_iterations(self, method):
-        self.base_dir = f"src/federated-nmf/fedNMF_datasets/{method}"
-        self.components_range = range(2, 11) #Set to coponent range in the federated data
+    def _process_iterations(self):
+        self.base_dir = "src/eval/matrix_files"
+        self.components_range = range(2, 101) #Set to coponent range in the federated data
         self.prelim_signatures = []
         self.avg_loss = []
         W_iterations = []
@@ -187,33 +199,6 @@ class mk_cluster(k_cluster):
             self.avg_loss = [np.nanmean(x) for x in losses]  # Use nanmean to ignore NaN values
         else:
             self.avg_loss = []
-
-    def _cluster_signatures(self):
-        silhouette_scores = []
-        cluster_centroids = []
-
-        for i, num_c in enumerate(self.components):
-            km = KMeans(n_clusters=num_c).fit(self.prelim_signatures[i])
-            cluster_centroids.append(km.cluster_centers_)
-            silhouette_scores.append(
-                [num_c, silhouette_score(self.prelim_signatures[i], km.labels_)]
-            )
-
-        silhouette_alone = [i[1] for i in silhouette_scores]
-        silhouette_hat = (
-            np.array(silhouette_alone) - np.mean(silhouette_alone)
-        ) / np.std(silhouette_alone)
-        loss_hat = (self.avg_loss - np.mean(self.avg_loss)) / np.std(self.avg_loss)
-        aux_loss = loss_hat - 1 * silhouette_hat
-
-        self.signatures = cluster_centroids[np.argmin(aux_loss)]
-
-        self._plot_aux_loss(
-            self.components,
-            aux_loss,
-            "Number of components",
-            "Auxiliary loss",
-        )
 
 
 class rk_cluster(k_cluster):
@@ -273,6 +258,23 @@ class rk_cluster(k_cluster):
 
 
 class ak_cluster(k_cluster):
+    '''
+    Autoencoder Cluster Class
+
+    This class is designed for mutational signature extraction using an autoencoder clustering approach.
+
+    Attributes:
+        dataset (str): The path to the dataset.
+        method (Callable[[pd.DataFrame, int], tuple[np.ndarray, np.ndarray]]): A callable method for performing dimensionality reduction and obtaining latent representations. It takes a pandas DataFrame (dataset) and an integer (number of latent dimensions) as input and returns a tuple containing the weight matrix W, the latent representation matrix H, and the reconstruction loss l.
+        runs (int): The number of runs for the autoencoder clustering algorithm.
+        latents (int): The number of latent dimensions for the autoencoder.
+
+    Methods:
+        _method_iteration: Performs the autoencoder method for the specified number of runs, storing preliminary signatures, H iterations, and average loss.
+        _cluster_signatures: Clusters the preliminary signatures using KMeans for each run, calculates silhouette scores and inertia scores, selects the cluster with the lowest auxiliary loss, and calculates final signatures.
+
+    '''
+
     def __init__(
         self,
         dataset: str,
@@ -281,6 +283,7 @@ class ak_cluster(k_cluster):
         latents: int = 64,
     ):
         self.latents = latents
+        self.loss = None # initial loss
         super().__init__(dataset, method, runs, (2, latents - 1))
 
     def _method_iteration(self):
@@ -295,6 +298,7 @@ class ak_cluster(k_cluster):
             self.prelim_signatures.append(W.T)
             self.H_iterations.append(H)
             self.avg_loss.append(l)
+            self.loss = l # Store loss
 
     def _cluster_signatures(self):
         cluster_centroids = []
@@ -305,6 +309,7 @@ class ak_cluster(k_cluster):
             c_cluster_centroids = []
             c_silhouette_scores = []
             c_inertia_scores = []
+            
             for j in self.components:
                 km = KMeans(n_clusters=j).fit(self.prelim_signatures[i])
                 c_cluster_centroids.append(km.cluster_centers_)
@@ -315,6 +320,9 @@ class ak_cluster(k_cluster):
             cluster_centroids.append(c_cluster_centroids)
             silhouette_scores.append(c_silhouette_scores)
             inertia_scores.append(c_inertia_scores)
+            # print(f"c_cluster_centroids: ", c_cluster_centroids)
+            # print(f"c_silhouette_scores: ", c_silhouette_scores)
+            # print(f"c_inertia_scores: ", c_inertia_scores)       
 
         cluster_components = []
         for i, centroids in enumerate(cluster_centroids):
@@ -347,6 +355,7 @@ class ak_cluster(k_cluster):
             "Run-components",
             "Auxiliary loss",
         )
+        
 
 
 if __name__ == "__main__":
